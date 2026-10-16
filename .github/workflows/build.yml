@@ -1,0 +1,87 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ubuntu:latest, ${{ matrix.cc }}
+    runs-on: ubuntu-latest
+    container: ubuntu:latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
+      DEBIAN_FRONTEND: noninteractive
+      U8G2_VERSION: 2.37.1
+      U8G2_SHA256: 16e63a2e131550a8e22a26bfbb4730e0015de5c9397532d8852a1659441c97ec
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates clang cmake curl git \
+            libgpiod-dev meson ninja-build pkgconf
+
+      - uses: actions/checkout@v7
+
+      - name: Build u8g2 ${{ env.U8G2_VERSION }}
+        run: |
+          curl -sSfL -o /tmp/u8g2.tar.gz \
+            https://github.com/olikraus/u8g2/archive/$U8G2_VERSION/u8g2-$U8G2_VERSION.tar.gz
+          echo "$U8G2_SHA256  /tmp/u8g2.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/u8g2.tar.gz -C /tmp
+          cmake -S /tmp/u8g2-$U8G2_VERSION -B /tmp/u8g2-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_C_FLAGS='-ffunction-sections -fdata-sections'
+          cmake --build /tmp/u8g2-build
+          cmake --install /tmp/u8g2-build
+
+      - name: Build
+        run: |
+          meson setup build -Dwerror=true
+          ninja -C build
+
+      - name: Test
+        run: |
+          status() { "$@" > /dev/null 2>&1 && echo 0 || echo $?; }
+          set -x
+          for c in sh1106 ssd1306; do
+            build/u8g2-oled -n -c $c Hello world > frame.txt
+            cat frame.txt
+            test $(wc -l < frame.txt) = 64
+            test $(grep -cx '#[#.]\{126\}#' frame.txt) = 64
+            test $(sed -n '1p;$p' frame.txt | grep -cx '#*') = 2
+            test $(sed '1d;$d' frame.txt | cut -c 2-127 | grep -c '#') -gt 0
+          done
+          test $(status build/u8g2-oled -h) = 0
+          test $(status build/u8g2-oled -n -c ssd1309) = 2
+          test $(status build/u8g2-oled -n -a 0x80) = 2
+          test $(status build/u8g2-oled) = 2
+          test $(status build/u8g2-oled -d /dev/i2c-99) = 1
+          test $(status build/u8g2-oled -d no-such-bus@0) = 1
+          # check the impact of --gc-sections: about 25 KB, instead of 14 MB with all the fonts
+          size build/u8g2-oled
+          test $(size build/u8g2-oled | awk 'NR == 2 { print $4 }') -lt 131072
+
+      - name: Install, link a program through pkg-config
+        run: |
+          meson install -C build
+          set -x
+          test -z "$(pkg-config --libs u8g2-linux | tr ' ' '\n' | grep '^[^-]')"
+          $CC -o /tmp/u8g2-oled src/u8g2-oled.c \
+            $(pkg-config --cflags --libs u8g2-linux) -Wl,--gc-sections
+          /tmp/u8g2-oled -n pkg-config > /dev/null
