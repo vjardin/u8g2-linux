@@ -29,7 +29,7 @@ static const struct {
 static void usage(FILE *f)
 {
 	fprintf(f,
-		"Usage: u8g2-oled [-d i2c] [-a addr] [-r line] [-c controller] [-n] [text...]\n"
+		"Usage: u8g2-oled [-d i2c] [-a addr] [-r line] [-c controller] [-m] [-n] [text...]\n"
 		"Draw a frame and up to %d text lines on a 128x64 I2C OLED.\n"
 		"  -d i2c         /dev/i2c-N, or the end of the adapter's device-tree path\n"
 		"                 (e.g. i2c-mux@70/i2c@3)\n"
@@ -37,25 +37,36 @@ static void usage(FILE *f)
 		"  -r line        GPIO line name of the display's reset (active low),\n"
 		"                 pulsed at init (default: none)\n"
 		"  -c controller  sh1106 (default) or ssd1306\n"
+		"  -m             centre the text in the middle of the screen\n"
 		"  -n             no I2C: print the frame as text on stdout\n",
 		TEXT_LINES_MAX);
 }
 
-static void draw(u8g2_t *u8g2, int argc, char **argv, const char *controller)
+static void draw(u8g2_t *u8g2, int n, char **argv, const char *controller,
+		 int middle)
 {
-	int i, y = LINE_HEIGHT;
+	const char *def[] = { "u8g2-oled", controller };
+	const char *const *lines = (const char *const *)argv;
+	int w = u8g2_GetDisplayWidth(u8g2), h = u8g2_GetDisplayHeight(u8g2);
+	int i, x = 4, y = LINE_HEIGHT;
 
-	u8g2_ClearBuffer(u8g2);
-	u8g2_DrawFrame(u8g2, 0, 0, u8g2_GetDisplayWidth(u8g2),
-		       u8g2_GetDisplayHeight(u8g2));
-	u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-	if (!argc) {
-		u8g2_DrawStr(u8g2, 4, y, "u8g2-oled");
-		u8g2_DrawStr(u8g2, 4, y + LINE_HEIGHT, controller);
-		return;
+	if (!n) {
+		lines = def;
+		n = 2;
 	}
-	for (i = 0; i < argc && i < TEXT_LINES_MAX; i++, y += LINE_HEIGHT)
-		u8g2_DrawStr(u8g2, 4, y, argv[i]);
+	if (n > TEXT_LINES_MAX)
+		n = TEXT_LINES_MAX;
+	u8g2_ClearBuffer(u8g2);
+	u8g2_DrawFrame(u8g2, 0, 0, w, h);
+	u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+	if (middle)
+		y = (h - n * LINE_HEIGHT) / 2 + u8g2_GetAscent(u8g2) +
+		    (LINE_HEIGHT - u8g2_GetAscent(u8g2) + u8g2_GetDescent(u8g2)) / 2;
+	for (i = 0; i < n; i++, y += LINE_HEIGHT) {
+		if (middle)
+			x = (w - (int)u8g2_GetStrWidth(u8g2, lines[i])) / 2;
+		u8g2_DrawStr(u8g2, x < 0 ? 0 : x, y, lines[i]);
+	}
 }
 
 static void print_buffer(u8g2_t *u8g2)
@@ -78,13 +89,13 @@ int main(int argc, char **argv)
 	unsigned long addr = 0x3c;
 	setup_fn setup = NULL;
 	struct u8g2_linux l;
-	int dry = 0, opt;
+	int dry = 0, middle = 0, opt;
 	char msg[256];
 	u8g2_t u8g2;
 	size_t i;
 	char *end;
 
-	while ((opt = getopt(argc, argv, "d:a:r:c:nh")) != -1) {
+	while ((opt = getopt(argc, argv, "d:a:r:c:mnh")) != -1) {
 		switch (opt) {
 		case 'd':
 			i2c = optarg;
@@ -101,6 +112,9 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 			controller = optarg;
+			break;
+		case 'm':
+			middle = 1;
 			break;
 		case 'n':
 			dry = 1;
@@ -124,7 +138,7 @@ int main(int argc, char **argv)
 
 	if (dry) {
 		setup(&u8g2, U8G2_R0, u8x8_byte_empty, u8x8_dummy_cb);
-		draw(&u8g2, argc - optind, argv + optind, controller);
+		draw(&u8g2, argc - optind, argv + optind, controller, middle);
 		print_buffer(&u8g2);
 		return 0;
 	}
@@ -141,7 +155,7 @@ int main(int argc, char **argv)
 	u8x8_SetUserPtr(u8g2_GetU8x8(&u8g2), &l);
 	u8g2_InitDisplay(&u8g2);
 	u8g2_SetPowerSave(&u8g2, 0);
-	draw(&u8g2, argc - optind, argv + optind, controller);
+	draw(&u8g2, argc - optind, argv + optind, controller, middle);
 	u8g2_SendBuffer(&u8g2);
 	u8g2_linux_close(&l);
 	if (l.err) {
