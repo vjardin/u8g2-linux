@@ -31,28 +31,21 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential ca-certificates clang cmake curl git \
+            build-essential ca-certificates clang curl git \
             libgpiod-dev meson ninja-build pkgconf
 
       - uses: actions/checkout@v7
 
-      - name: Build u8g2 ${{ env.U8G2_VERSION }}
+      - name: Get u8g2 ${{ env.U8G2_VERSION }}
         run: |
           curl -sSfL -o /tmp/u8g2.tar.gz \
             https://github.com/olikraus/u8g2/archive/$U8G2_VERSION/u8g2-$U8G2_VERSION.tar.gz
           echo "$U8G2_SHA256  /tmp/u8g2.tar.gz" | sha256sum -c -
           tar -xzf /tmp/u8g2.tar.gz -C /tmp
-          cmake -S /tmp/u8g2-$U8G2_VERSION -B /tmp/u8g2-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_C_FLAGS='-ffunction-sections -fdata-sections'
-          cmake --build /tmp/u8g2-build
-          cmake --install /tmp/u8g2-build
 
       - name: Build
         run: |
-          meson setup build -Dwerror=true
+          meson setup build -Dwerror=true -Du8g2_src=/tmp/u8g2-$U8G2_VERSION
           ninja -C build
 
       - name: Test

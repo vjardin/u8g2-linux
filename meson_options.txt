@@ -1,0 +1,2 @@
+option('u8g2_src', type : 'string', value : '',
+  description : 'u8g2 source tree: build its C library here instead of using an installed libu8g2')

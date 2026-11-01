@@ -5,7 +5,15 @@ and `u8g2-oled`, a small tool that draws on a 128x64 I2C OLED.
 
 ## Build
 
-It needs the u8g2 library installed as a static library (`libu8g2.a`,
+From a u8g2 source tree: u8g2's C library is built here, with a C
+compiler only.
+
+```sh
+meson setup build -Du8g2_src=/path/to/u8g2
+ninja -C build
+```
+
+Or with the u8g2 library installed as a static library (`libu8g2.a`,
 headers in `include/u8g2/`), built with `-ffunction-sections -fdata-sections`:
 because the applications are linked with `--gc-sections` they keep only the fonts and
 display setups they use.

@@ -1,5 +1,5 @@
 project('u8g2-linux', 'c',
-  version : '1.1.0',
+  version : '1.2.0',
   license : 'BSD-3-Clause',
   meson_version : '>= 0.56',
   default_options : [
@@ -20,9 +20,14 @@ cc = meson.get_compiler('c')
 # u8g2 is built as a static library
 # the purpose is to keep only the fonts and display setups a
 # program uses
-u8g2 = cc.find_library('u8g2', static : true)
-if not cc.has_header('u8g2/u8g2.h')
-  error('u8g2/u8g2.h not found')
+u8g2_src = get_option('u8g2_src')
+if u8g2_src == ''
+  u8g2 = cc.find_library('u8g2', static : true)
+  if not cc.has_header('u8g2/u8g2.h')
+    error('u8g2/u8g2.h not found')
+  endif
+else
+  subdir('u8g2')
 endif
 gpiod = dependency('libgpiod', version : '>= 2.0')
 
